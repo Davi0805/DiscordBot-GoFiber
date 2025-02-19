@@ -21,15 +21,19 @@ type OpenAIResponse struct {
 }
 
 func getOpenAIResponse(prompt string) (string, error) {
-    apiKey := os.Getenv("OPENAI_API_KEY")
+    apiKey := os.Getenv("OPENAI_API_KEY") // Certifique-se de definir sua chave de API no ambiente
+    if apiKey == "" {
+        return "", fmt.Errorf("API key não encontrada")
+    }
+
     url := "https://api.openai.com/v1/chat/completions"
 
     requestBody, _ := json.Marshal(map[string]interface{}{
-        "model": "gpt-3.5-turbo",
+        "model": "gpt-4o-mini", // Atualize para o modelo que você deseja
         "messages": []map[string]string{
-            {"role": "system", "content": "Você é um assistente útil."},
             {"role": "user", "content": prompt},
         },
+        "store": true, // Incluindo o campo "store" como no seu exemplo
     })
 
     req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
@@ -37,7 +41,7 @@ func getOpenAIResponse(prompt string) (string, error) {
         return "", fmt.Errorf("erro ao criar a requisição: %w", err)
     }
 
-    req.Header.Set("Authorization", "Bearer "+apiKey)
+    req.Header.Set("Authorization", "Bearer " + apiKey)
     req.Header.Set("Content-Type", "application/json")
 
     client := &http.Client{}
