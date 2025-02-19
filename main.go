@@ -1,30 +1,48 @@
 package main
 
 import (
-	"os"
+    "fmt"
+    "os"
+    "os/signal"
+    "syscall"
 
-	"github.com/gofiber/fiber/v2"
+    "github.com/bwmarrin/discordgo"
 )
 
-func getPort() string {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = ":3000"
-	} else {
-		port = ":" + port
-	}
-
-	return port
-}
-
 func main() {
-	app := fiber.New()
+    token := os.Getenv("DISCORD_BOT_TOKEN")
+    if token == "" {
+        fmt.Println("Por favor, defina a variável de ambiente DISCORD_BOT_TOKEN")
+        return
+    }
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"message": "Hello, Railway!",
-		})
-	})
+    bot, err := discordgo.New("Bot " + token)
+    if err != nil {
+        fmt.Println("Erro ao iniciar o bot:", err)
+        return
+    }
 
-	app.Listen(getPort())
+    bot.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+        if m.Author.Bot {
+            return
+        }
+
+        if m.Content == "!ping" {
+            s.ChannelMessageSend(m.ChannelID, "Pong!")
+        }
+    })
+
+    err = bot.Open()
+    if err != nil {
+        fmt.Println("Erro ao conectar o bot:", err)
+        return
+    }
+
+    fmt.Println("Bot está online. Pressione Ctrl+C para sair.")
+    
+    stop := make(chan os.Signal, 1)
+    signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+    <-stop
+
+    bot.Close()
 }
