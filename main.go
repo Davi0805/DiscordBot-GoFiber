@@ -7,6 +7,7 @@ import (
     "net/http"
     "os"
     "strings"
+    "io/ioutil"
 
     "github.com/bwmarrin/discordgo"
 )
@@ -31,24 +32,38 @@ func getOpenAIResponse(prompt string) (string, error) {
         },
     })
 
-    req, _ := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+    req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+    if err != nil {
+        return "", fmt.Errorf("erro ao criar a requisição: %w", err)
+    }
+
     req.Header.Set("Authorization", "Bearer "+apiKey)
     req.Header.Set("Content-Type", "application/json")
 
     client := &http.Client{}
     resp, err := client.Do(req)
     if err != nil {
-        return "", err
+        return "", fmt.Errorf("erro ao enviar a requisição: %w", err)
     }
     defer resp.Body.Close()
 
+    // Verifica se a resposta foi 200 OK
+    if resp.StatusCode != http.StatusOK {
+        body, _ := ioutil.ReadAll(resp.Body)
+        return "", fmt.Errorf("erro na resposta da API. Status: %s, Corpo: %s", resp.Status, string(body))
+    }
+
+    // Processa o corpo da resposta
     var res OpenAIResponse
-    json.NewDecoder(resp.Body).Decode(&res)
+    if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+        return "", fmt.Errorf("erro ao decodificar a resposta JSON: %w", err)
+    }
 
     if len(res.Choices) > 0 {
         return res.Choices[0].Message.Content, nil
     }
-    return "Erro ao obter resposta", nil
+
+    return "Erro: nenhuma resposta encontrada", nil
 }
 
 func main() {
@@ -72,7 +87,8 @@ func main() {
 
             resposta, err := getOpenAIResponse(pergunta)
             if err != nil {
-                resposta = "Erro ao se conectar à IA"
+                fmt.Println("Erro ao obter resposta da IA:", err) // Log do erro
+                resposta = "Erro ao se conectar à IA. Tente novamente mais tarde."
             }
             s.ChannelMessageSend(m.ChannelID, resposta)
         }
@@ -80,10 +96,4 @@ func main() {
 
     err = bot.Open()
     if err != nil {
-        fmt.Println("Erro ao conectar o bot:", err)
-        return
-    }
-
-    fmt.Println("Bot está online. Digite !chat [pergunta] para falar com a IA.")
-    select {} // Mantém o bot rodando
-}
+        fmt.
