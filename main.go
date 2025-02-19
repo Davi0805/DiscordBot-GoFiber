@@ -1,87 +1,89 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
-	"sync"
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "os"
+    "strings"
 
-	"github.com/bwmarrin/discordgo"
+    "github.com/bwmarrin/discordgo"
 )
 
-// Mapa para armazenar canais de notificação para cada servidor (guild)
-var channelMap = make(map[string]string)
-var mu sync.Mutex // Mutex para evitar concorrência
+type OpenAIResponse struct {
+    Choices []struct {
+        Message struct {
+            Content string `json:"content"`
+        } `json:"message"`
+    } `json:"choices"`
+}
+
+func getOpenAIResponse(prompt string) (string, error) {
+    apiKey := os.Getenv("OPENAI_API_KEY")
+    url := "https://api.openai.com/v1/chat/completions"
+
+    requestBody, _ := json.Marshal(map[string]interface{}{
+        "model": "gpt-3.5-turbo",
+        "messages": []map[string]string{
+            {"role": "system", "content": "Você é um assistente útil."},
+            {"role": "user", "content": prompt},
+        },
+    })
+
+    req, _ := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+    req.Header.Set("Authorization", "Bearer "+apiKey)
+    req.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+
+    var res OpenAIResponse
+    json.NewDecoder(resp.Body).Decode(&res)
+
+    if len(res.Choices) > 0 {
+        return res.Choices[0].Message.Content, nil
+    }
+    return "Erro ao obter resposta", nil
+}
 
 func main() {
-	token := os.Getenv("DISCORD_BOT_TOKEN")
-	if token == "" {
-		fmt.Println("Por favor, defina a variável de ambiente DISCORD_BOT_TOKEN")
-		return
-	}
+    bot, err := discordgo.New("Bot " + os.Getenv("DISCORD_BOT_TOKEN"))
+    if err != nil {
+        fmt.Println("Erro ao iniciar o bot:", err)
+        return
+    }
 
-	bot, err := discordgo.New("Bot " + token)
-	if err != nil {
-		fmt.Println("Erro ao iniciar o bot:", err)
-		return
-	}
+    bot.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+        if m.Author.Bot {
+            return
+        }
 
-	// Ativar intents necessárias
-	bot.Identify.Intents = discordgo.IntentsGuildMessages |
-		discordgo.IntentsMessageContent |
-		discordgo.IntentsGuildPresences
+        if strings.HasPrefix(m.Content, "!chat ") {
+            pergunta := strings.TrimPrefix(m.Content, "!chat ")
+            if pergunta == "" {
+                s.ChannelMessageSend(m.ChannelID, "Por favor, insira uma pergunta depois de `!chat`.")
+                return
+            }
 
-	// Comando para definir o canal
-	bot.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
-		if m.Author.Bot {
-			return
-		}
+            resposta, err := getOpenAIResponse(pergunta)
+            if err != nil {
+                resposta = "Erro ao se conectar à IA"
+            }
+            s.ChannelMessageSend(m.ChannelID, resposta)
+        }
+    })
 
-		// Comando !ping
-		if m.Content == "!ping" {
-			s.ChannelMessageSend(m.ChannelID, "Pong!")
-		}
+    err = bot.Open()
+    if err != nil {
+        fmt.Println("Erro ao conectar o bot:", err)
+        return
+    }
 
-		// Comando !setchannel para definir canal dinamicamente
-		if m.Content == "!setchannel" {
-			mu.Lock()
-			channelMap[m.GuildID] = m.ChannelID
-			mu.Unlock()
-			s.ChannelMessageSend(m.ChannelID, "✅ Canal de notificações definido!")
-		}
-	})
-
-	// Detectar quando um usuário inicia um jogo
-	bot.AddHandler(func(s *discordgo.Session, p *discordgo.PresenceUpdate) {
-		if len(p.Activities) > 0 {
-			for _, activity := range p.Activities {
-				if activity.Type == discordgo.ActivityTypeGame {
-					mu.Lock()
-					channelID, exists := channelMap[p.GuildID]
-					mu.Unlock()
-					if exists {
-						msg := fmt.Sprintf("🚀 %s começou a jogar **%s**! Será que ele é homoafetivo?", p.User.Username, activity.Name)
-						s.ChannelMessageSend(channelID, msg)
-					}
-				}
-			}
-		}
-	})
-
-	// Conectar o bot
-	err = bot.Open()
-	if err != nil {
-		fmt.Println("Erro ao conectar o bot:", err)
-		return
-	}
-
-	fmt.Println("Bot está online. Pressione Ctrl+C para sair.")
-
-	// Aguardar sinal de interrupção
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
-
-	bot.Close()
+    fmt.Println("Bot está online. Digite !chat [pergunta] para falar com a IA.")
+    select {} // Mantém o bot rodando
 }
