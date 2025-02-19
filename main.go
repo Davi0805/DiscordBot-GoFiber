@@ -22,7 +22,7 @@ func main() {
         return
     }
 
-    bot.Identify.Intents = discordgo.IntentsGuildMessages
+    bot.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
 
     bot.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
         if m.Author.Bot {
