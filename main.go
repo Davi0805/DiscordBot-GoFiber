@@ -22,6 +22,8 @@ func main() {
         return
     }
 
+    bot.Identify.Intents = discordgo.IntentsGuildMessages
+
     bot.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
         if m.Author.Bot {
             return
