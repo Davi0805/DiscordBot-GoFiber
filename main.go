@@ -96,4 +96,10 @@ func main() {
 
     err = bot.Open()
     if err != nil {
-        fmt.
+        fmt.Println("Erro ao conectar o bot:", err)
+        return
+    }
+
+    fmt.Println("Bot está online. Digite !chat [pergunta] para falar com a IA.")
+    select {} // Mantém o bot rodando
+}
